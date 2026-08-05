@@ -1,10 +1,7 @@
 name: Docker Image CI
 
 on:
-  workflow_dispatch:  # 允许手动触发
-  push:               # 允许推送触发
-    branches:
-      - main
+  workflow_dispatch:  # 仅允许手动触发
 
 jobs:
   build:
@@ -32,7 +29,6 @@ jobs:
           DOCKER_USER: ${{ secrets.DOCKER_HUB_USERNAME }}
         run: |
           DATE_TAG=$(date +"%y.%m") # 生成当前月份的标签，如 24.08[cite: 1]
-          # 替换原作者用户名，动态查询你自己 Docker Hub 上的 php-epg 镜像 Tag[cite: 1]
           TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_USER}/php-epg/tags/?page_size=100" | jq -r '.results[].name // empty') 
           COUNT=0
           for tag in $TAGS; do
@@ -72,6 +68,4 @@ jobs:
           file: ./Dockerfile[cite: 1]
           push: true[cite: 1]
           platforms: linux/amd64, linux/arm64, linux/arm/v7[cite: 1]
-          tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:${{ env.TAG }}
-            ${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:latest
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:${{ env.TAG }},${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:latest
