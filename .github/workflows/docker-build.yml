@@ -20,13 +20,13 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN || secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Fetch existing tags from Docker Hub
         id: get_tags
         env:
-          DOCKER_USER: ${{ secrets.DOCKER_HUB_USERNAME }}
+          DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           DATE_TAG=$(date +"%y.%m")
           TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_USER}/php-epg/tags/?page_size=100" | jq -r '.results[].name // empty')
@@ -65,4 +65,4 @@ jobs:
           file: ./Dockerfile
           push: true
           platforms: linux/amd64, linux/arm64, linux/arm/v7
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:${{ env.TAG }},${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/php-epg:${{ env.TAG }},${{ secrets.DOCKERHUB_USERNAME }}/php-epg:latest
