@@ -1,7 +1,7 @@
 name: Docker Image CI
 
 on:
-  workflow_dispatch:  # 仅允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -9,63 +9,60 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3  # 拉取代码[cite: 1]
+        uses: actions/checkout@v3
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3[cite: 1]
-        
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3[cite: 1]
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3 # 登录 Docker Hub[cite: 1]
+        uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}[cite: 1]
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}[cite: 1]
-          
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
       - name: Fetch existing tags from Docker Hub
         id: get_tags
         env:
           DOCKER_USER: ${{ secrets.DOCKER_HUB_USERNAME }}
         run: |
-          DATE_TAG=$(date +"%y.%m") # 生成当前月份的标签，如 24.08[cite: 1]
-          TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_USER}/php-epg/tags/?page_size=100" | jq -r '.results[].name // empty') 
+          DATE_TAG=$(date +"%y.%m")
+          TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_USER}/php-epg/tags/?page_size=100" | jq -r '.results[].name // empty')
           COUNT=0
           for tag in $TAGS; do
             if [[ $tag == $DATE_TAG* ]]; then
-              COUNT=$((COUNT + 1)) # 计算现有相同月份标签的数量[cite: 1]
+              COUNT=$((COUNT + 1))
             fi
           done
           if [ $COUNT -eq 0 ]; then
-            NEW_TAG="${DATE_TAG}" # 如果没有相同标签，使用基础标签[cite: 1]
+            NEW_TAG="${DATE_TAG}"
           else
-            NEW_TAG="${DATE_TAG}.${COUNT}" # 如果有相同标签，生成递增标签[cite: 1]
+            NEW_TAG="${DATE_TAG}.${COUNT}"
           fi
-          echo "TAG=${NEW_TAG}" >> $GITHUB_ENV # 将新标签保存为环境变量[cite: 1]
+          echo "TAG=${NEW_TAG}" >> $GITHUB_ENV
 
       - name: Process files
         run: |
-          VERSION=$(TZ="Asia/Shanghai" date +"v%Y.%m.%d")  # 获取北京时间，并转换为 v2024.11.24 格式[cite: 1]
+          VERSION=$(TZ="Asia/Shanghai" date +"v%Y.%m.%d")
 
-          # 剥离文本文件开头的 UTF-8 BOM 头[cite: 1]
           find epg -type f \
             ! -path "epg/assets/opencc/*" \
             ! -path "epg/assets/tinyfilemanager/*" \
-            -exec perl -i -pe 's/^\x{FEFF}// if -T' {} +[cite: 1]
+            -exec perl -i -pe 's/^\x{FEFF}// if -T' {} +
 
-          # 更新 manage.html[cite: 1]
-          sed -i "s|<span id=\"version\">.*</span>|<span id=\"version\">${VERSION}</span>|" epg/assets/html/manage.html[cite: 1]
-          sed -i "s|assets/css/manage.css|assets/css/manage.css?ver=${VERSION}|g" epg/assets/html/manage.html[cite: 1]
-          sed -i "s|assets/js/manage.js|assets/js/manage.js?ver=${VERSION}|g" epg/assets/html/manage.html[cite: 1]
+          sed -i "s|<span id=\"version\">.*</span>|<span id=\"version\">${VERSION}</span>|" epg/assets/html/manage.html
+          sed -i "s|assets/css/manage.css|assets/css/manage.css?ver=${VERSION}|g" epg/assets/html/manage.html
+          sed -i "s|assets/js/manage.js|assets/js/manage.js?ver=${VERSION}|g" epg/assets/html/manage.html
 
-          # 更新 login.html[cite: 1]
-          sed -i "s|assets/css/login.css|assets/css/login.css?ver=${VERSION}|g" epg/assets/html/login.html[cite: 1]
+          sed -i "s|assets/css/login.css|assets/css/login.css?ver=${VERSION}|g" epg/assets/html/login.html
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .[cite: 1]
-          file: ./Dockerfile[cite: 1]
-          push: true[cite: 1]
-          platforms: linux/amd64, linux/arm64, linux/arm/v7[cite: 1]
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64, linux/arm64, linux/arm/v7
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:${{ env.TAG }},${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:latest
