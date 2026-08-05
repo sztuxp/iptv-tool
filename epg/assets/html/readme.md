@@ -58,8 +58,9 @@ IP 列表：点击后可修改；可设置为「黑名单模式」、「白名�
 `URL #PF=分组前缀`  
 `URL #UA=自定义UA`  
 `URL #RP={"a1":"b1", "a2":"b2"}`（字符串替换，`\#` 代表 `#` ，`\n` 代表 `换行`）  
-`URL #FT=频道名1, 分组2, 直播地址3`（白名单，模糊匹配）  
-`URL #FT=!频道名1, 分组2, 直播地址3`（黑名单，模糊匹配）  
+`URL #RPGP={"a1":"b1", "a2":"b2"}`（分组名的字符串替换，`\#` 代表 `#` ，`\n` 代表 `换行`）
+`URL #FT=频道名1, 分组2, 直播地址3`（白名单，精确匹配）  
+`URL #FT=!频道名1, 分组2, 直播地址3`（黑名单，精确匹配）  
 `URL #EXTVLCOPT={"http-user-agent":"xxx", "http-referrer":"xxx"}`（加入额外 `#EXTVLCOPT` 标签）  
 `URL #EXTINFOPT={"catchup":"xxx", "catchup-source":"xxx"}`（`#EXTINF` 标签加入额外信息）  
 `URL #EXTKU9OPT={"DE":"1", "SC":"0"}`（加入 酷9 相关信息，全局）  
@@ -163,7 +164,12 @@ regex:/^咪咕-赛事.*/
 #祖国同胞
 regex:/^翡翠台$/, regex:/^黄金翡翠台$/
 ```
-（6）将部分源整合到自定义分组  
+（6）先进行分组聚合，再进行频道筛选，先聚合央视、中央台、CCTV三个分组，再提取出分组内所有CCTV1，CCTV2，CCTV3频道  
+```
+#央视:中央台:CCTV
+CCTV1，CCTV2，CCTV3
+```
+（7）将部分源整合到自定义分组  
 ```
 #抖音虎牙直播, http://xxx.m3u, https://xxx.txt
 regex:/.*/
