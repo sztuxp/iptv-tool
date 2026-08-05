@@ -12,70 +12,66 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3  # 拉取代码
+        uses: actions/checkout@v3  # 拉取代码[cite: 1]
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v3[cite: 1]
         
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3[cite: 1]
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3 # 登录 Docker Hub
+        uses: docker/login-action@v3 # 登录 Docker Hub[cite: 1]
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-  
-      - name: Log in to Tencent Cloud Container Registry    
-        uses: docker/login-action@v3 # 登录 腾讯云容器镜像站
-        with:
-          registry: ccr.ccs.tencentyun.com
-          username: ${{ secrets.TENCENT_CCR_USERNAME }}
-          password: ${{ secrets.TENCENT_CCR_PASSWORD }}
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}[cite: 1]
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}[cite: 1]
           
       - name: Fetch existing tags from Docker Hub
         id: get_tags
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_HUB_USERNAME }}
         run: |
-          DATE_TAG=$(date +"%y.%m") # 生成当前月份的标签，如24.08
-          TAGS=$(curl -s "https://hub.docker.com/v2/repositories/taksss/php-epg/tags/?page_size=100" | jq -r '.results[].name') # 获取 Docker Hub 中现有的标签
+          DATE_TAG=$(date +"%y.%m") # 生成当前月份的标签，如 24.08[cite: 1]
+          # 替换原作者用户名，动态查询你自己 Docker Hub 上的 php-epg 镜像 Tag[cite: 1]
+          TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_USER}/php-epg/tags/?page_size=100" | jq -r '.results[].name // empty') 
           COUNT=0
           for tag in $TAGS; do
             if [[ $tag == $DATE_TAG* ]]; then
-              COUNT=$((COUNT + 1)) # 计算现有相同月份标签的数量
+              COUNT=$((COUNT + 1)) # 计算现有相同月份标签的数量[cite: 1]
             fi
           done
           if [ $COUNT -eq 0 ]; then
-            NEW_TAG="${DATE_TAG}" # 如果没有相同标签，使用基础标签
+            NEW_TAG="${DATE_TAG}" # 如果没有相同标签，使用基础标签[cite: 1]
           else
-            NEW_TAG="${DATE_TAG}.${COUNT}" # 如果有相同标签，生成递增标签
+            NEW_TAG="${DATE_TAG}.${COUNT}" # 如果有相同标签，生成递增标签[cite: 1]
           fi
-          echo "TAG=${NEW_TAG}" >> $GITHUB_ENV # 将新标签保存为环境变量
+          echo "TAG=${NEW_TAG}" >> $GITHUB_ENV # 将新标签保存为环境变量[cite: 1]
 
       - name: Process files
         run: |
-          VERSION=$(TZ="Asia/Shanghai" date +"v%Y.%m.%d")  # 获取北京时间，并转换为 v2024.11.24 格式
+          VERSION=$(TZ="Asia/Shanghai" date +"v%Y.%m.%d")  # 获取北京时间，并转换为 v2024.11.24 格式[cite: 1]
 
-          # 剥离文本文件开头的 UTF-8 BOM 头
+          # 剥离文本文件开头的 UTF-8 BOM 头[cite: 1]
           find epg -type f \
             ! -path "epg/assets/opencc/*" \
             ! -path "epg/assets/tinyfilemanager/*" \
-            -exec perl -i -pe 's/^\x{FEFF}// if -T' {} +
+            -exec perl -i -pe 's/^\x{FEFF}// if -T' {} +[cite: 1]
 
-          # 更新 manage.html
-          sed -i "s|<span id=\"version\">.*</span>|<span id=\"version\">${VERSION}</span>|" epg/assets/html/manage.html
-          sed -i "s|assets/css/manage.css|assets/css/manage.css?ver=${VERSION}|g" epg/assets/html/manage.html
-          sed -i "s|assets/js/manage.js|assets/js/manage.js?ver=${VERSION}|g" epg/assets/html/manage.html
+          # 更新 manage.html[cite: 1]
+          sed -i "s|<span id=\"version\">.*</span>|<span id=\"version\">${VERSION}</span>|" epg/assets/html/manage.html[cite: 1]
+          sed -i "s|assets/css/manage.css|assets/css/manage.css?ver=${VERSION}|g" epg/assets/html/manage.html[cite: 1]
+          sed -i "s|assets/js/manage.js|assets/js/manage.js?ver=${VERSION}|g" epg/assets/html/manage.html[cite: 1]
 
-          # 更新 login.html
-          sed -i "s|assets/css/login.css|assets/css/login.css?ver=${VERSION}|g" epg/assets/html/login.html
+          # 更新 login.html[cite: 1]
+          sed -i "s|assets/css/login.css|assets/css/login.css?ver=${VERSION}|g" epg/assets/html/login.html[cite: 1]
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          platforms: linux/amd64, linux/arm64, linux/arm/v7
-          tags: taksss/php-epg:${{ env.TAG }}, 
-                taksss/php-epg:latest, 
-                ccr.ccs.tencentyun.com/taksss/php-epg:latest
+          context: .[cite: 1]
+          file: ./Dockerfile[cite: 1]
+          push: true[cite: 1]
+          platforms: linux/amd64, linux/arm64, linux/arm/v7[cite: 1]
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:${{ env.TAG }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/php-epg:latest
