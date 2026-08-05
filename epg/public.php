@@ -685,7 +685,18 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                         'list' => $list
                     ];
                     break;
-
+            
+                case 'ftc':
+                case 'filter_category':
+                    $filter_raw = ($Config['cht_to_chs'] ?? 0) ? t2s(trim($value)) : trim($value);
+                    $list = array_filter(array_map('trim', explode(',', ltrim($filter_raw, '!'))), 'strlen');
+                    $pipeline[] = [
+                        'type' => 'ftc',
+                        'is_black' => (strpos($filter_raw, '!') === 0),
+                        'list' => $list
+                    ];
+                    break;
+                    
                 case 'extvlcopt':
                     $jsonOpts = json_decode($value, true);
                     if (json_last_error() === JSON_ERROR_NONE && is_array($jsonOpts)) {
@@ -1046,20 +1057,21 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                     }
                 }
 
-                // 3. 执行 FT 过滤
+                // 3. 执行 FT 过滤（恢复为：全局字段模糊/包含匹配）
                 elseif ($step['type'] === 'ft') {
                     $list = $step['list'];
                     $isBlack = $step['is_black'];
 
-                    // 精确匹配比对闭包（使用引用传递，确保拿到 rpgp/rp 修改后的最新变量）
-                    $exactMatch = function ($keyword) use (&$chsChannelName, &$channelName, &$chsGroupTitle, &$groupTitle, &$streamUrl) {
-                        return strcasecmp($chsChannelName, $keyword) === 0
-                            || strcasecmp($channelName, $keyword) === 0
-                            || strcasecmp($chsGroupTitle, $keyword) === 0
-                            || strcasecmp($groupTitle, $keyword) === 0
-                            || strcasecmp($streamUrl, $keyword) === 0;
+                    // 模糊/包含匹配闭包（stripos）
+                    $fuzzyMatch = function ($keyword) use (&$chsChannelName, &$channelName, &$chsGroupTitle, &$groupTitle, &$streamUrl) {
+                        return stripos($chsChannelName, $keyword) !== false
+                            || stripos($channelName, $keyword) !== false
+                            || stripos($chsGroupTitle, $keyword) !== false
+                            || stripos($groupTitle, $keyword) !== false
+                            || stripos($streamUrl, $keyword) !== false;
                     };
-                    $matched = !empty(array_filter($list, $exactMatch));
+
+                    $matched = !empty(array_filter($list, $fuzzyMatch));
 
                     if ($isBlack && $matched) {
                         $isDropped = true;
@@ -1069,6 +1081,28 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                         break;
                     }
                 }
+                // 4. 执行 FTC 过滤（只限分组，且为：精确匹配）
+                elseif ($step['type'] === 'ftc') {
+                    $list = $step['list'];
+                    $isBlack = $step['is_black'];
+
+                    // 仅对分组名做精确匹配闭包（strcasecmp）
+                    $exactGroupMatch = function ($keyword) use (&$chsGroupTitle, &$groupTitle) {
+                        return strcasecmp($chsGroupTitle, $keyword) === 0
+                            || strcasecmp($groupTitle, $keyword) === 0;
+                    };
+
+                    $matched = !empty(array_filter($list, $exactGroupMatch));
+
+                    if ($isBlack && $matched) {
+                        $isDropped = true;
+                        break;
+                    } elseif (!$isBlack && !$matched && !empty($list)) {
+                        $isDropped = true;
+                        break;
+                    }
+                }
+
             }
 
             if ($isDropped) {
