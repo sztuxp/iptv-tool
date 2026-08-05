@@ -630,7 +630,7 @@ try {
                 }
 
                 $localFile = 'data/CHANGELOG.md';
-                $url = 'https://gitee.com/taksssss/iptv-tool/raw/main/CHANGELOG.md';
+                $url = 'https://gitee.com/sztuxp/iptv-tool/raw/main/CHANGELOG.md';
                 $isUpdated = false;
                 $updateMessage = '';
                 if ($checkUpdate) {
