@@ -623,6 +623,9 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         // 初始化
         $groupPrefix = $userAgent = $replacePattern = $extvlcoptPattern = $ku9Raw = $proxy = $t2sopt = '';
         $white_list = $black_list = $extInfOpt = [];
+        
+        // 新增：用于记录按顺序执行的操作队列
+        $pipeline = [];
 
         foreach ($parts as $i => $part) {
             if ($i === 0) continue; // 跳过 URL 部分
@@ -648,17 +651,39 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                 case 'rp':
                 case 'replace':
                     $replacePattern = trim($value);
+                    if (!empty($replacePattern)) {
+                        $jsonRules = json_decode($replacePattern, true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($jsonRules)) {
+                            $pipeline[] = [
+                                'type' => 'rp',
+                                'rules' => $jsonRules
+                            ];
+                        }
+                    }
+                    break;
+                case 'rpgp':
+                case 'replace_group':
+                    $replacePattern = trim($value);
+                    if (!empty($replacePattern)) {
+                        $jsonRules = json_decode($replacePattern, true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($jsonRules)) {
+                            $pipeline[] = [
+                                'type' => 'rpgp',
+                                'rules' => $jsonRules
+                            ];
+                        }
+                    }
                     break;
 
                 case 'ft':
                 case 'filter':
                     $filter_raw = ($Config['cht_to_chs'] ?? 0) ? t2s(trim($value)) : trim($value);
                     $list = array_filter(array_map('trim', explode(',', ltrim($filter_raw, '!'))), 'strlen');
-                    if (strpos($filter_raw, '!') === 0) {
-                        $black_list = $list;
-                    } else {
-                        $white_list = $list;
-                    }
+                    $pipeline[] = [
+                        'type' => 'ft',
+                        'is_black' => (strpos($filter_raw, '!') === 0),
+                        'list' => $list
+                    ];
                     break;
 
                 case 'extvlcopt':
@@ -749,6 +774,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
         }
 
         // 应用多个字符串替换规则
+        /* 移除这段原代码：
         if (!empty($replacePattern)) {
             $jsonRules = json_decode($replacePattern, true);
             
@@ -781,6 +807,7 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
                 }
             }
         }
+        */
 
         $urlContentLines = explode("\n", $urlContent);
         $urlChannelData = [];
@@ -968,22 +995,98 @@ function doParseSourceInfo($urlLine = null, $parseAll = false) {
 
         // 将转换后的信息写回 urlChannelData
         foreach ($urlChannelData as $index => &$row) {
-            // 如果不在白名单或在黑名单中，删除该行
-            $groupTitle = $row['groupTitle'];
+            $groupTitle     = $row['groupTitle'];
             $chsChannelName = $chsChannelNames[$index];
-            $chsGroupTitle = $chsGroupTitles[$index];
-            $streamUrl = $row['streamUrl'];
-            $in_white = empty($white_list) || array_filter($white_list, function ($w) use ($chsChannelName, $chsGroupTitle, $streamUrl) {
-                return stripos($chsChannelName, $w) !== false || stripos($chsGroupTitle, $w) !== false || stripos($streamUrl, $w) !== false;
-            });
-            $in_black = !empty($black_list) && array_filter($black_list, function ($b) use ($chsChannelName, $chsGroupTitle, $streamUrl) {
-                return stripos($chsChannelName, $b) !== false || stripos($chsGroupTitle, $b) !== false || stripos($streamUrl, $b) !== false;
-            });
-            if (!$in_white || $in_black) {
+            $chsGroupTitle  = $chsGroupTitles[$index];
+            $streamUrl      = $row['streamUrl'];
+            $channelName    = $row['channelName'];
+
+            $isDropped = false;
+
+            // 按参数出现顺序依次执行 Pipeline
+            foreach ($pipeline as $step) {
+                // 1. 执行 RP 替换（全局字段替换）
+                if ($step['type'] === 'rp') {
+                    foreach ($step['rules'] as $search => $replace) {
+                        $replace = str_replace("\\n", "\n", $replace);
+
+                        if (strpos($search, 'regex:') === 0) {
+                            $pattern = substr($search, 6);
+                            if (@preg_match($pattern, '') !== false) {
+                                $channelName    = preg_replace($pattern, $replace, $channelName);
+                                $chsChannelName = preg_replace($pattern, $replace, $chsChannelName);
+                                $chsGroupTitle  = preg_replace($pattern, $replace, $chsGroupTitle);
+                                $groupTitle     = preg_replace($pattern, $replace, $groupTitle);
+                                $streamUrl      = preg_replace($pattern, $replace, $streamUrl);
+                            }
+                        } else {
+                            $channelName    = str_replace($search, $replace, $channelName);
+                            $chsChannelName = str_replace($search, $replace, $chsChannelName);
+                            $chsGroupTitle  = str_replace($search, $replace, $chsGroupTitle);
+                            $groupTitle     = str_replace($search, $replace, $groupTitle);
+                            $streamUrl      = str_replace($search, $replace, $streamUrl);
+                        }
+                    }
+                }
+                // 2. 执行 RPGP 替换（仅修改分组名）
+                elseif ($step['type'] === 'rpgp') {
+                    foreach ($step['rules'] as $search => $replace) {
+                        $replace = str_replace("\\n", "\n", $replace);
+
+                        if (strpos($search, 'regex:') === 0) {
+                            $pattern = substr($search, 6);
+                            if (@preg_match($pattern, '') !== false) {
+                                $chsGroupTitle = preg_replace($pattern, $replace, $chsGroupTitle);
+                                $groupTitle    = preg_replace($pattern, $replace, $groupTitle);
+                            }
+                        } else {
+                            $chsGroupTitle = str_replace($search, $replace, $chsGroupTitle);
+                            $groupTitle    = str_replace($search, $replace, $groupTitle);
+                        }
+                    }
+                }
+
+                // 3. 执行 FT 过滤
+                elseif ($step['type'] === 'ft') {
+                    $list = $step['list'];
+                    $isBlack = $step['is_black'];
+
+                    // 精确匹配比对闭包（使用引用传递，确保拿到 rpgp/rp 修改后的最新变量）
+                    $exactMatch = function ($keyword) use (&$chsChannelName, &$channelName, &$chsGroupTitle, &$groupTitle, &$streamUrl) {
+                        return strcasecmp($chsChannelName, $keyword) === 0
+                            || strcasecmp($channelName, $keyword) === 0
+                            || strcasecmp($chsGroupTitle, $keyword) === 0
+                            || strcasecmp($groupTitle, $keyword) === 0
+                            || strcasecmp($streamUrl, $keyword) === 0;
+                    };
+                    $matched = !empty(array_filter($list, $exactMatch));
+
+                    if ($isBlack && $matched) {
+                        $isDropped = true;
+                        break;
+                    } elseif (!$isBlack && !$matched && !empty($list)) {
+                        $isDropped = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($isDropped) {
                 unset($urlChannelData[$index]);
                 continue;
             }
 
+            // 【关键修复】：必须同步更新写回 $row 数组中，同时更新 $chsGroupTitles 索引数组！
+            $row['channelName']    = $channelName;
+            $row['chsChannelName'] = $chsChannelName;
+            $row['groupTitle']     = $groupTitle;
+            $row['chsGroupTitle']  = $chsGroupTitle;
+            $row['streamUrl']      = $streamUrl;
+            
+            // 同步更新全局/外部的简繁转换组名，防止后续逻辑读取旧组名
+            $chsGroupTitles[$index] = $chsGroupTitle;
+
+            // ... 下面接原有的 ku9Opt 处理及 DB 关联逻辑 ...
             // 解析并生成 EXTKU9OPT
             $ku9OptStr = '';
             $ku9Opt = $ku9Raw ? parseExtKu9Opt($ku9Raw, $groupTitle) : [];
@@ -1268,29 +1371,56 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         // 检查频道名称是否匹配
                         $cleanChsChannelName = cleanChannelName($chsChannelName);
 
-                        // CGTN 和 CCTV 不进行模糊匹配
-                        if (
-                            $channelName === $groupChannelName ||
-                            (
-                                $fuzzyMatchingEnable &&
-                                (
-                                    $cleanChsChannelName === $cleanChsGroupChannelName ||
+                       // 1. 获取当前模板组允许的所有分组源（包含目标分组名本身 + 冒号后面的别名/源分组名）
+                        $allowedGroupNames = array_merge([$templateGroupTitle], $groupInfo['alias'] ?? []);
+
+                        // 2. 检查当前频道原本的所属分组，是否属于这些允许的分组源之一
+                        $matchGroupTitle = $groupPrefix . $groupTitle;
+                        $isInAllowedGroups = false;
+                        foreach ($allowedGroupNames as $allowedGroup) {
+                            if (!empty($matchGroupTitle) && (
+                                stripos($matchGroupTitle, $allowedGroup) !== false || 
+                                stripos($allowedGroup, $matchGroupTitle) !== false
+                            )) {
+                                $isInAllowedGroups = true;
+                                break;
+                            }
+                        }
+
+                        // 3. 检查频道匹配逻辑
+                        $isRegexChannel = strpos($groupChannelName, 'regex:') === 0;
+                        $isNameMatched = false;
+
+                        if ($isRegexChannel) {
+                            // 【核心改动】：如果是 regex: 正则规则，必须同时满足：
+                            // ① 频道原本所在的源分组属于 allowedGroupNames（如：卫视、央卫频道）
+                            // ② 频道名称匹配正则表达式
+                            $pattern = substr($groupChannelName, 6);
+                            if ($isInAllowedGroups && @preg_match($pattern, $channelName . $cleanChsChannelName)) {
+                                $isNameMatched = true;
+                            }
+                        } else {
+                            // 普通频道名称精准/模糊匹配逻辑
+                            if ($channelName === $groupChannelName) {
+                                $isNameMatched = true;
+                            } elseif ($fuzzyMatchingEnable) {
+                                if ($cleanChsChannelName === $cleanChsGroupChannelName) {
+                                    $isNameMatched = true;
+                                } elseif (
+                                    stripos($cleanChsGroupChannelName, 'CGTN') === false &&
+                                    stripos($cleanChsGroupChannelName, 'CCTV') === false &&
+                                    !empty($cleanChsChannelName) &&
                                     (
-                                        stripos($cleanChsGroupChannelName, 'CGTN') === false &&
-                                        stripos($cleanChsGroupChannelName, 'CCTV') === false &&
-                                        !empty($cleanChsChannelName) &&
-                                        (
-                                            stripos($cleanChsChannelName, $cleanChsGroupChannelName) !== false ||
-                                            stripos($cleanChsGroupChannelName, $cleanChsChannelName) !== false
-                                        )
-                                    ) ||
-                                    (
-                                        strpos($groupChannelName, 'regex:') === 0 &&
-                                        @preg_match(substr($groupChannelName, 6), $channelName . $cleanChsChannelName)
+                                        stripos($cleanChsChannelName, $cleanChsGroupChannelName) !== false ||
+                                        stripos($cleanChsGroupChannelName, $cleanChsChannelName) !== false
                                     )
-                                )
-                            )
-                        ) {
+                                ) {
+                                    $isNameMatched = true;
+                                }
+                            }
+                        }
+
+                        if ($isNameMatched) { 
                             // 更新信息
                             $extInfOptStr = extractExtInfOpt($streamUrl);
                             $m3uStreamUrl = $streamUrl . (($m3uCommentEnabled && strpos($streamUrl, '$') === false) ? "\${$groupPrefix}{$groupTitle}" : "");
