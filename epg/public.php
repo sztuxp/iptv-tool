@@ -1405,42 +1405,45 @@ function generateLiveFiles($channelData, $fileName, $saveOnly = false) {
                         // 检查频道名称是否匹配
                         $cleanChsChannelName = cleanChannelName($chsChannelName);
 
-                       // 1. 获取当前模板组允许的所有分组源（包含目标分组名本身 + 冒号后面的别名/源分组名）
+                         // 1. 获取当前模板组允许的所有来源分组（目标组名 + 冒号后的所有别名分组）
                         $allowedGroupNames = array_merge([$templateGroupTitle], $groupInfo['alias'] ?? []);
 
-                        // 2. 检查当前频道原本的所属分组，是否属于这些允许的分组源之一
-                        $matchGroupTitle = $groupPrefix . $groupTitle;
+                        // 2. 检查当前频道原本的所属分组，是否【精确匹配】允许的分组源之一
+                        $matchGroupTitle = trim($groupPrefix . $groupTitle);
                         $isInAllowedGroups = false;
-                        foreach ($allowedGroupNames as $allowedGroup) {
-                            if (!empty($matchGroupTitle) && (
-                                stripos($matchGroupTitle, $allowedGroup) !== false || 
-                                stripos($allowedGroup, $matchGroupTitle) !== false
-                            )) {
-                                $isInAllowedGroups = true;
-                                break;
+                        if ($templateGroupTitle === 'default') {
+                            $isInAllowedGroups = true;
+                        } else {
+                            foreach ($allowedGroupNames as $allowedGroup) {
+                                // 分组名采用严格精确匹配（忽略大小写 strcasecmp）
+                                if (strcasecmp($matchGroupTitle, trim($allowedGroup)) === 0) {
+                                    $isInAllowedGroups = true;
+                                    break;
+                                }
                             }
                         }
 
-                        // 3. 检查频道匹配逻辑
+                        // 如果频道不属于当前模板指定的分组池，直接跳过
+                        if (!$isInAllowedGroups) {
+                            continue;
+                        }
+
+                        // 3. 检查频道匹配逻辑（模糊匹配 / 正则匹配）
                         $isRegexChannel = strpos($groupChannelName, 'regex:') === 0;
                         $isNameMatched = false;
 
                         if ($isRegexChannel) {
-                            // 【核心改动】：如果是 regex: 正则规则，必须同时满足：
-                            // ① 频道原本所在的源分组属于 allowedGroupNames（如：卫视、央卫频道）
-                            // ② 频道名称匹配正则表达式
+                            // 正则提取：匹配频道名称
                             $pattern = substr($groupChannelName, 6);
-                            if ($isInAllowedGroups && @preg_match($pattern, $channelName . $cleanChsChannelName)) {
+                            if (@preg_match($pattern, $channelName) || @preg_match($pattern, $cleanChsChannelName)) {
                                 $isNameMatched = true;
                             }
                         } else {
-                            // 普通频道名称精准/模糊匹配逻辑
-                            if ($channelName === $groupChannelName) {
+                            // 普通频道名提取：采用【模糊匹配/包含匹配】
+                            if ($channelName === $groupChannelName || $cleanChsChannelName === $cleanChsGroupChannelName) {
                                 $isNameMatched = true;
                             } elseif ($fuzzyMatchingEnable) {
-                                if ($cleanChsChannelName === $cleanChsGroupChannelName) {
-                                    $isNameMatched = true;
-                                } elseif (
+                                if (
                                     stripos($cleanChsGroupChannelName, 'CGTN') === false &&
                                     stripos($cleanChsGroupChannelName, 'CCTV') === false &&
                                     !empty($cleanChsChannelName) &&
