@@ -6,7 +6,9 @@ LABEL description="Alpine based image with nginx and php8.3-fpm."
 # RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 # 安装常用扩展
-RUN apk --no-cache --update \
+RUN echo "@edge https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories \
+    && echo "@edgemain https://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories \
+    && apk --no-cache --update \
     add nginx \
     curl \
     icu-data-full \
