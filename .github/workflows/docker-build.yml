@@ -64,5 +64,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          # 强制拉取最新的基础镜像层，不使用任何构建缓存
+          pull: true
+          no-cache: true
           platforms: linux/amd64, linux/arm64, linux/arm/v7
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/php-epg:${{ env.TAG }},${{ secrets.DOCKERHUB_USERNAME }}/php-epg:latest
